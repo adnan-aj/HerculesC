@@ -2,7 +2,7 @@ CC = gcc
 CFLAGS = -g -Wall
 
 TARGET = herc
-OBJS = xbox-hercules.o evtest.o 
+OBJS = xbox-hercules.o evtest.o herc-comm.o
 DEPS =
 
 all: $(TARGET)

@@ -31,6 +31,8 @@
 #include <poll.h>
 #include <time.h>
 
+#include "hercules.h"
+
 extern char *events[];
 extern char **names[];
 extern char *absval[];
@@ -52,7 +54,8 @@ int motorB_setting = 0;
 int diff_steering(int joyX, int joyY);
 volatile bool interrupted = false;
 
-void int_handler(int sig, siginfo_t *siginfo, void *context) {
+
+void int_handler(int signumxs) {
 
     interrupted = true;
 }
@@ -105,55 +108,17 @@ void print_event(char *typename, struct input_event ev)
 	   ev.value);
 }
 
-int motor_open()
-{
-    int fd;
-    
-    fd = open("/dev/ttyMFD1", O_RDWR | O_NOCTTY | O_NDELAY);
-    if (fd < 0) {
-	perror("open_port: Unable to open /dev/ttyMFD1");
-    }
-    else {
-	fcntl(fd, F_SETFL, O_NONBLOCK);
-    }
-    return fd;
-}
-
-int motor_speed(int speedA, int speedB)
-{
-    char outbuf[128];
-    if (mfd == 0)
-	return 1;
-    sprintf(outbuf, "mot %d %d\n", speedA, speedB);
-    printf("%s", outbuf);
-    write(mfd, outbuf, strlen(outbuf));
-    return 0;
-}
-
-void motor_close()
-{
-    motor_speed(0, 0);
-    close(mfd);
-}	
-ssize_t ngetc (int fd, char *c)
-{
-    return read (fd, c, 1);
-}
-		
 int main (int argc, char **argv)
 {
-    int rd, i, j, k;
+    int rd, i;
     struct sigaction act;
     struct input_event ev[64];
     unsigned long bit[EV_MAX][NBITS(KEY_MAX)];
     int abs[5];
     int btnselect = 0, btnstart = 0, btnmode = 0, xboxtext = 0;
-    int btnA = 0, btnB = 0;
     bool motor_update = false;
-    char inbuf[128];
-    int inlen = 0;
-    char ch;
     FILE *logfp;
+    int piden = 1;
 
 
     time_t current_time;
@@ -166,22 +131,22 @@ int main (int argc, char **argv)
     int rv;
     struct pollfd ufds[2];
     
-    if (argc < 2) {
-	printf("usage: %s odometryfile\n\n", argv[0]);
-	return 1;
+    if (argc > 1) {
+	
+	if ((logfp = fopen(argv[1], "a")) == NULL) {
+	    printf("Log file %s cannot open\n", argv[1]);
+	    return 1;
+	}
     }
-
-    if ((logfp = fopen(argv[1], "a")) == NULL) {
-	printf("Log file %s cannot open\n", argv[1]);
-	return 1;
-    }
+    else
+	logfp = stdout;
 
     if ((xfd = open_xbox()) < 0) {
 	printf("Xbox driver not found fd = %d\n", xfd);
 	return 1;
     }
 
-    if ((mfd = motor_open()) < 0) {
+    if ((mfd = herc_open("/dev/ttyMFD1")) < 0) {
 	printf("Hercules motor serial port cannot open fd = %d\n", mfd);
 	return 1;
     }
@@ -205,13 +170,7 @@ int main (int argc, char **argv)
 	    printf("Timeout occurred!  No data after 3.5 seconds.\n");
 	} else {
 	    if (ufds[0].revents & (POLLIN | POLLPRI)) {
-		// motor controller serial port
-		//recv(s1, buf1, sizeof buf1, 0); // receive normal data
-		//printf("Serial port POLLIN\n");
-		read(mfd, inbuf + inlen, 1);
-		ch = inbuf[inlen++];
-		if ((ch == '\n') || (ch == '\r') || (inlen > 120)) {
-		//if ((ch == '\r') || (inlen > 120)) {
+		if (herc_poll()) {
 
 		    time(&current_time);
 		    time_info = localtime(&current_time);
@@ -221,12 +180,11 @@ int main (int argc, char **argv)
 			strftime(timeString, sizeof(timeString), "%F %T", time_info);
 			fprintf(logfp, "Time: %s\n", timeString);
 		    }
-		    inbuf[inlen-1] = 0;
-		    inlen = 0;
-		    if (strstr(inbuf, "odo:") != NULL)
-			fprintf(logfp, "%s \n", inbuf);
+
+		    if (strstr(herc_inbuf, "odo:") != NULL)
+			fprintf(logfp, "%s \n", herc_inbuf);
 		    else
-			printf("Log: %s\n", inbuf);
+			printf("Log: %s\n", herc_inbuf);
 		}
 	    }
 
@@ -263,7 +221,14 @@ int main (int argc, char **argv)
 				btnstart = ev[i].value;
 				printf("Interesting %d!!!\n", btnstart);
 			    }
-			    
+			    if (ev[i].type == EV_KEY && ev[i].code == BTN_Y) {
+				btnstart = ev[i].value;
+				printf("Interesting %d!!!\n", btnstart);
+				if (ev[i].value == 1) {
+				    piden = 1 - piden;
+				    herc_piden(piden);
+				}
+			    }
 			    if (ev[i].type == EV_ABS && ev[i].code == ABS_RX) {
 				//motorB_setting = -ev[i].value w/ 64;
 				joystickX = -ev[i].value;
@@ -298,7 +263,7 @@ int main (int argc, char **argv)
 	    }
 	}
     }
-    motor_close();
+    herc_close();
     fclose(logfp);
     return 0;
 }
