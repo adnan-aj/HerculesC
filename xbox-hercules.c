@@ -217,7 +217,8 @@ int main (int argc, char **argv)
 		    time_info = localtime(&current_time);
 		    if (time_info->tm_sec != oldsec) {
 			oldsec = time_info->tm_sec;
-			strftime(timeString, sizeof(timeString), "%a %h %e %H:%M:%S", time_info);
+			// format is 2017-01-01 13:48:56
+			strftime(timeString, sizeof(timeString), "%F %T", time_info);
 			fprintf(logfp, "Time: %s\n", timeString);
 		    }
 		    inbuf[inlen-1] = 0;
