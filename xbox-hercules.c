@@ -108,17 +108,30 @@ void print_event(char *typename, struct input_event ev)
 	   ev.value);
 }
 
-int main (int argc, char **argv)
+void usage(char *appname)
 {
+    printf("usage: %s [logfilename]\n", appname);
+    printf("\tOn Xbox controller:\n");
+    printf("\tend: small back-button + main mode button\n");
+    printf("\tstop: red \"B\" button\n");
+    printf("\ttoggle PID: yellow \"Y\" button\n");
+    printf("\txboxtext: button select (?)\n");
+}
+
+
+
+
+int main(int argc, char **argv)
+{
+    FILE *logfp;
     int rd, i;
     struct sigaction act;
     struct input_event ev[64];
-    unsigned long bit[EV_MAX][NBITS(KEY_MAX)];
-    int abs[5];
     int btnselect = 0, btnstart = 0, btnmode = 0, xboxtext = 0;
     bool motor_update = false;
-    FILE *logfp;
     int piden = 1;
+    //unsigned long bit[EV_MAX][NBITS(KEY_MAX)];
+    //int abs[5];
 
 
     time_t current_time;
@@ -132,6 +145,10 @@ int main (int argc, char **argv)
     struct pollfd ufds[2];
     
     if (argc > 1) {
+	if (strcmp(argv[1], "--help") == 0) {
+	    usage(argv[0]);
+	    return 0;
+	}
 	
 	if ((logfp = fopen(argv[1], "a")) == NULL) {
 	    printf("Log file %s cannot open\n", argv[1]);
@@ -222,7 +239,6 @@ int main (int argc, char **argv)
 				printf("Interesting %d!!!\n", btnstart);
 			    }
 			    if (ev[i].type == EV_KEY && ev[i].code == BTN_Y) {
-				btnstart = ev[i].value;
 				printf("Interesting %d!!!\n", btnstart);
 				if (ev[i].value == 1) {
 				    piden = 1 - piden;
@@ -241,16 +257,22 @@ int main (int argc, char **argv)
 				motor_update = true;
 			    }
 			    
-			    
+			    if (ev[i].type == EV_KEY && ev[i].code == BTN_B) {
+				joystickX = joystickY = 0;
+				motor_update = true;
+			    }
+
 			    if (ev[i].type == EV_KEY && ev[i].code == BTN_MODE) {
-				btnmode = ev[i].value;
-				printf("Interesting %d!!!\n", btnmode);
-				if (btnmode && btnselect) {
-				    printf("Ending program\n");
+				if (btnselect) {
 				    interrupted = 1;
 				}
 			    }
 			    
+			    if (interrupted) {
+				joystickX = joystickY = 0;
+				motor_update = true;
+			    }
+
 			    if (motor_update) {
 				diff_steering(joystickX, joystickY);
 				motor_speed(motorA_setting, motorB_setting);
